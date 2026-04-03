@@ -1,26 +1,17 @@
 from flask import Flask, request
 import requests
-import json
 import os
 from datetime import datetime
+from pymongo import MongoClient
 
 app = Flask(__name__)
 
-DB_FILE = "data.json"
+# 🔥 CONEXIÓN A MONGODB
+MONGO_URI = os.environ.get("MONGO_URI")
+client = MongoClient(MONGO_URI)
 
-# Crear DB si no existe
-if not os.path.exists(DB_FILE):
-    with open(DB_FILE, "w") as f:
-        json.dump([], f)
-
-def save_data(entry):
-    with open(DB_FILE, "r") as f:
-        data = json.load(f)
-
-    data.append(entry)
-
-    with open(DB_FILE, "w") as f:
-        json.dump(data, f, indent=4)
+db = client["xyra_db"]
+collection = db["users"]
 
 # 🌐 VERIFICACIÓN
 @app.route("/")
@@ -42,9 +33,6 @@ def verify():
         city = "Unknown"
         vpn = False
 
-    # FOTO TELEGRAM (si luego conectas bot)
-    photo = f"https://api.telegram.org/file/botTOKEN/photos/{user_id}.jpg"
-
     entry = {
         "user_id": user_id,
         "username": username,
@@ -53,11 +41,11 @@ def verify():
         "city": city,
         "device": user_agent,
         "vpn": vpn,
-        "photo": photo,
         "time": str(datetime.now())
     }
 
-    save_data(entry)
+    # 🔥 GUARDAR EN MONGO
+    collection.insert_one(entry)
 
     return f"""
     <h2>✅ Verificación completada</h2>
@@ -77,22 +65,21 @@ def admin():
     if password != "1234":
         return "❌ Acceso denegado"
 
-    with open(DB_FILE, "r") as f:
-        data = json.load(f)
+    users = list(collection.find().sort("_id", -1))
 
     html = "<h2>📊 PANEL XYRA</h2>"
 
-    for user in data[::-1]:
+    for user in users:
         html += f"""
         <hr>
-        <b>ID:</b> {user['user_id']} <br>
-        <b>User:</b> @{user['username']} <br>
-        <b>IP:</b> {user['ip']} <br>
-        <b>País:</b> {user['country']} <br>
-        <b>Ciudad:</b> {user['city']} <br>
-        <b>Dispositivo:</b> {user['device']} <br>
-        <b>VPN:</b> {user['vpn']} <br>
-        <b>Fecha:</b> {user['time']} <br>
+        <b>ID:</b> {user.get('user_id')} <br>
+        <b>User:</b> @{user.get('username')} <br>
+        <b>IP:</b> {user.get('ip')} <br>
+        <b>País:</b> {user.get('country')} <br>
+        <b>Ciudad:</b> {user.get('city')} <br>
+        <b>Dispositivo:</b> {user.get('device')} <br>
+        <b>VPN:</b> {user.get('vpn')} <br>
+        <b>Fecha:</b> {user.get('time')} <br>
         """
 
     return html
